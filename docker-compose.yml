@@ -1,0 +1,121 @@
+services:
+  clickhouse:
+    build:
+      context: ./clickhouse
+      args:
+        CLICKHOUSE_VERSION: ${CLICKHOUSE_VERSION:-26.6.1.1193-alpine}
+    image: ads-clickhouse:${CLICKHOUSE_VERSION:-26.6.1.1193-alpine}
+    environment:
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-analytics}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-analytics}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-analytics_password}
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: 1
+      LLM_API_KEY: ${LLM_API_KEY:-}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_CHAT_COMPLETIONS_ENDPOINT: ${LLM_CHAT_COMPLETIONS_ENDPOINT:-https://api.openai.com/v1/chat/completions}
+      LLM_MAP_MODEL: ${LLM_MAP_MODEL:-gpt-4.1-mini}
+      LLM_REDUCE_MODEL: ${LLM_REDUCE_MODEL:-gpt-4.1}
+    ports:
+      - "8123:8123"
+      - "9000:9000"
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+      - ./clickhouse/init:/docker-entrypoint-initdb.d:ro
+      - ./clickhouse/config.d:/etc/clickhouse-server/config.d:ro
+      - ./clickhouse/functions:/etc/clickhouse-server/functions:ro
+      - ./clickhouse/user_scripts:/var/lib/clickhouse/user_scripts:ro
+      - ./tools:/opt/ads-tools:ro
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --query 'SELECT 1'"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana-oss:11.3.0
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      CLICKHOUSE_DB: ${CLICKHOUSE_DB:-analytics}
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-analytics}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-analytics_password}
+    ports:
+      - "3001:3000"
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+    restart: unless-stopped
+
+  mcp-clickhouse:
+    image: mcp/clickhouse
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CLICKHOUSE_HOST: clickhouse
+      CLICKHOUSE_PORT: 8123
+      CLICKHOUSE_SECURE: "false"
+      CLICKHOUSE_USER: ${CLICKHOUSE_USER:-analytics}
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-analytics_password}
+      CLICKHOUSE_DATABASE: ${CLICKHOUSE_DB:-analytics}
+      CLICKHOUSE_MCP_SERVER_TRANSPORT: sse
+      CLICKHOUSE_MCP_BIND_HOST: 0.0.0.0
+    ports:
+      - "8001:8000"
+    restart: unless-stopped
+
+  mcp-grafana:
+    image: grafana/mcp-grafana
+    depends_on:
+      - grafana
+    environment:
+      GRAFANA_URL: http://grafana:3000
+      GRAFANA_USERNAME: ${GRAFANA_ADMIN_USER:-admin}
+      GRAFANA_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:-admin}
+      GRAFANA_ORG_ID: 1
+    ports:
+      - "8002:8000"
+    restart: unless-stopped
+
+  librechat-db:
+    image: mongo:7
+    volumes:
+      - librechat_mongo_data:/data/db
+    restart: unless-stopped
+
+  librechat:
+    image: ${LIBRECHAT_IMAGE:-registry.librechat.ai/danny-avila/librechat-dev:latest}
+    depends_on:
+      - librechat-db
+      - mcp-clickhouse
+      - mcp-grafana
+    environment:
+      HOST: 0.0.0.0
+      MONGO_URI: mongodb://librechat-db:27017/LibreChat
+      DOMAIN_CLIENT: ${LIBRECHAT_DOMAIN:-http://localhost:3080}
+      DOMAIN_SERVER: ${LIBRECHAT_DOMAIN:-http://localhost:3080}
+      ALLOW_REGISTRATION: "true"
+      ALLOW_EMAIL_LOGIN: "true"
+      ALLOW_UNVERIFIED_EMAIL_LOGIN: "true"
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      CREDS_KEY: ${CREDS_KEY}
+      CREDS_IV: ${CREDS_IV}
+      OPENAI_API_KEY: ${LLM_API_KEY:-}
+      OPENAI_REVERSE_PROXY: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      LLM_REDUCE_MODEL: ${LLM_REDUCE_MODEL:-gpt-4.1}
+    ports:
+      - "3080:3080"
+    volumes:
+      - ./librechat/librechat.yaml:/app/librechat.yaml:ro
+    restart: unless-stopped
+
+volumes:
+  clickhouse_data:
+  grafana_data:
+  librechat_mongo_data:

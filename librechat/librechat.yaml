@@ -1,0 +1,38 @@
+version: 1.2.1
+
+cache: true
+
+mcpSettings:
+  allowedDomains:
+    - mcp-clickhouse
+    - mcp-grafana
+
+endpoints:
+  custom:
+    - name: "OpenAI-compatible"
+      apiKey: "${OPENAI_API_KEY}"
+      baseURL: "${OPENAI_REVERSE_PROXY}"
+      models:
+        default:
+          - "${LLM_REDUCE_MODEL}"
+      titleConvo: true
+      modelDisplayLabel: "LLM"
+
+mcpServers:
+  clickhouse:
+    type: sse
+    url: http://mcp-clickhouse:8000/sse
+    timeout: 60000
+    serverInstructions: |
+      Use the existing ClickHouse MCP server for data access. Do not invent data.
+      For Elasticsearch log questions, read analytics.llm_map_results and analytics.llm_reduce_results first.
+      Execute final SELECT queries through ClickHouse MCP only.
+      Do not run AI functions directly from LibreChat; they are materialized by ClickHouse SQL jobs.
+
+  grafana:
+    type: sse
+    url: http://mcp-grafana:8000/sse
+    timeout: 300000
+    serverInstructions: |
+      Use Grafana MCP only after ClickHouse returned a validated query/result.
+      Build panels with the ClickHouse datasource uid clickhouse-analytics.
