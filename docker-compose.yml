@@ -13,6 +13,12 @@ services:
       LLM_API_KEY: ${LLM_API_KEY:-}
       LLM_BASE_URL: ${LLM_BASE_URL:-https://api.openai.com/v1}
       LLM_CHAT_COMPLETIONS_ENDPOINT: ${LLM_CHAT_COMPLETIONS_ENDPOINT:-https://api.openai.com/v1/chat/completions}
+      LLM_MAP_API_KEY: ${LLM_MAP_API_KEY:-}
+      LLM_MAP_BASE_URL: ${LLM_MAP_BASE_URL:-https://api.openai.com/v1}
+      LLM_MAP_CHAT_COMPLETIONS_ENDPOINT: ${LLM_MAP_CHAT_COMPLETIONS_ENDPOINT:-https://api.openai.com/v1/chat/completions}
+      LLM_REDUCE_API_KEY: ${LLM_REDUCE_API_KEY:-}
+      LLM_REDUCE_BASE_URL: ${LLM_REDUCE_BASE_URL:-https://api.openai.com/v1}
+      LLM_REDUCE_CHAT_COMPLETIONS_ENDPOINT: ${LLM_REDUCE_CHAT_COMPLETIONS_ENDPOINT:-https://api.openai.com/v1/chat/completions}
       LLM_MAP_MODEL: ${LLM_MAP_MODEL:-gpt-4.1-mini}
       LLM_REDUCE_MODEL: ${LLM_REDUCE_MODEL:-gpt-4.1}
     ports:
@@ -106,8 +112,8 @@ services:
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       CREDS_KEY: ${CREDS_KEY}
       CREDS_IV: ${CREDS_IV}
-      OPENAI_API_KEY: ${LLM_API_KEY:-}
-      OPENAI_REVERSE_PROXY: ${LLM_BASE_URL:-https://api.openai.com/v1}
+      OPENAI_API_KEY: ${LLM_REDUCE_API_KEY:-}
+      OPENAI_REVERSE_PROXY: ${LLM_REDUCE_BASE_URL:-https://api.openai.com/v1}
       LLM_REDUCE_MODEL: ${LLM_REDUCE_MODEL:-gpt-4.1}
     ports:
       - "3080:3080"
