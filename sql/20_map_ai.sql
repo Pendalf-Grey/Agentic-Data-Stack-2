@@ -14,7 +14,6 @@ SELECT
       'Не возвращай исходные логи. user_question=', i.user_question,
       '\ncompressed_json=', b.compressed_json
     ),
-    'Return strict JSON only. No markdown.',
     0.1
   ) AS map_summary_json,
   now64(3) AS created_at

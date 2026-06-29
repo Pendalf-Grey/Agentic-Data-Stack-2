@@ -11,7 +11,6 @@ SELECT
       'Не выдумывай данные. summaries=',
       arrayStringConcat(groupArray(map_summary_json), '\n')
     ),
-    'Return strict JSON only. No markdown.',
     0.1
   ) AS summary_json,
   '' AS refined_sql,

@@ -20,7 +20,6 @@ SELECT
       'refined_sql должен быть SELECT только по analytics.es_raw_logs, с фильтрами по времени/source/index. ',
       'summaries=', arrayStringConcat(groupArray(r.summary_json), '\n')
     ),
-    'Return strict JSON only. No markdown.',
     0.1
   ) AS summary_json,
   now64(3) AS created_at

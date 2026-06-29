@@ -71,6 +71,25 @@ sh tools/run_mapreduce_once.sh
 - `LLM_MAP_CHAT_COMPLETIONS_ENDPOINT`
 - `LLM_REDUCE_CHAT_COMPLETIONS_ENDPOINT`
 
+В текущей схеме Map-LLM рассчитана на локальный Ollama на Mac:
+
+```env
+LLM_MAP_API_KEY=ollama
+LLM_MAP_BASE_URL=http://host.docker.internal:11434/v1
+LLM_MAP_CHAT_COMPLETIONS_ENDPOINT=http://host.docker.internal:11434/v1/chat/completions
+LLM_MAP_MODEL=codellama:13b
+```
+
+ClickHouse работает в Docker и ходит в Ollama на хостовой macOS через `host.docker.internal:11434`. Сам Ollama не запускается внутри Docker: на Apple Silicon он использует Metal/GPU нативно, если модель помещается в память.
+
+AI-функции настроены по официальной схеме ClickHouse: first argument is the named collection, затем prompt и опциональная temperature:
+
+```sql
+aiGenerate('llm_map', prompt, 0.1)
+```
+
+Права на named collections задаются через `GRANT NAMED COLLECTION`; в этом dev-стеке пользователь `analytics` получает XML-grant при старте ClickHouse.
+
 ## Важное
 
 Map-этап теперь идет через очередь `analytics.llm_map_queue`. Один worker запускается так:
