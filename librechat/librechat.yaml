@@ -9,14 +9,14 @@ mcpSettings:
 
 endpoints:
   custom:
-    - name: "OpenAI-compatible"
+    - name: "Kimi"
       apiKey: "${OPENAI_API_KEY}"
       baseURL: "${OPENAI_REVERSE_PROXY}"
       models:
         default:
-          - "${LLM_REDUCE_MODEL}"
+          - "kimi-k2.6"
       titleConvo: true
-      modelDisplayLabel: "LLM"
+      modelDisplayLabel: "Kimi"
 
 mcpServers:
   clickhouse:
