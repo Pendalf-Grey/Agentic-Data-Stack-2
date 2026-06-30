@@ -4,13 +4,12 @@ SELECT
   1 AS reduce_level,
   reduce_group,
   aiGenerate(
-    'llm_reduce',
     concat(
-      'Ты Reduce-LLM уровня 1. Сожми результаты Map-LLM в один JSON. ',
-      'Нужно сохранить только root causes, сервисы, временные окна, фильтры для ClickHouse и доказательства. ',
-      'Не выдумывай данные. summaries=',
+      'Map summaries:',
+      '\n',
       arrayStringConcat(groupArray(map_summary_json), '\n')
     ),
+    'You are a level-1 Reduce LLM for SRE log analysis. Compress Map-LLM results into valid JSON only. Keep only root causes, affected services, time windows, ClickHouse filters, evidence, missing data, and confidence. Do not invent data.',
     0.1
   ) AS summary_json,
   '' AS refined_sql,

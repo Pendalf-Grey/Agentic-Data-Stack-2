@@ -7,17 +7,20 @@ SELECT
   b.event_time_to,
   b.rows_read,
   aiGenerate(
-    'llm_map',
     concat(
-      'Ты Map-LLM. Проанализируй сжатый batch логов. ',
-      'Верни строгий JSON: summary, suspected_services, root_causes, candidate_filters, evidence, confidence. ',
-      'Не возвращай исходные логи. user_question=', i.user_question,
+      'Investigation context:',
+      '\nuser_question=', i.user_question,
+      '\ninvestigation_time_from=', toString(i.time_from),
+      '\ninvestigation_time_to=', toString(i.time_to),
+      '\nbatch_time_from=', toString(b.event_time_from),
+      '\nbatch_time_to=', toString(b.event_time_to),
       '\ncompressed_json=', b.compressed_json
     ),
+    {map_system_prompt:String},
     0.1
   ) AS map_summary_json,
   now64(3) AS created_at
-FROM analytics.llm_investigations FINAL AS i
+FROM analytics.llm_investigations AS i FINAL
 INNER JOIN analytics.es_log_compressed_batches AS b
   ON b.source_name = i.source_name
  AND b.index_name LIKE i.index_like

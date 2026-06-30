@@ -47,6 +47,15 @@ CREATE TABLE IF NOT EXISTS analytics.llm_investigations
 ENGINE = ReplacingMergeTree(updated_at)
 ORDER BY investigation_id;
 
+CREATE TABLE IF NOT EXISTS analytics.llm_prompts
+(
+  prompt_name String,
+  prompt String,
+  updated_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY prompt_name;
+
 CREATE TABLE IF NOT EXISTS analytics.llm_map_results
 (
   investigation_id String,

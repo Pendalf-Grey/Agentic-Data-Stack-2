@@ -30,7 +30,7 @@ SELECT
   toUInt64(toUnixTimestamp64Milli(now64(3))) * 1000000 + b.batch_no AS version,
   now64(3) AS created_at,
   now64(3) AS updated_at
-FROM analytics.llm_investigations FINAL AS i
+FROM analytics.llm_investigations AS i FINAL
 INNER JOIN analytics.es_log_compressed_batches AS b
   ON b.source_name = i.source_name
  AND b.index_name LIKE i.index_like

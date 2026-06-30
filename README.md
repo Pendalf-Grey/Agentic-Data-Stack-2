@@ -82,13 +82,22 @@ LLM_MAP_MODEL=codellama:13b
 
 ClickHouse работает в Docker и ходит в Ollama на хостовой macOS через `host.docker.internal:11434`. Сам Ollama не запускается внутри Docker: на Apple Silicon он использует Metal/GPU нативно, если модель помещается в память.
 
-AI-функции настроены по официальной схеме ClickHouse: first argument is the named collection, затем prompt и опциональная temperature:
+AI-функции настроены по схеме ClickHouse 26.6: prompt, optional constant system prompt, optional temperature. Credentials выбираются через setting `ai_function_credentials`:
 
 ```sql
-aiGenerate('llm_map', prompt, 0.1)
+aiGenerate(prompt, system_prompt, 0.1)
+SETTINGS ai_function_credentials = 'llm_map'
 ```
 
 Права на named collections задаются через `GRANT NAMED COLLECTION`; в этом dev-стеке пользователь `analytics` получает XML-grant при старте ClickHouse.
+
+Map-LLM prompt хранится отдельно от кода:
+
+```text
+prompts/map_compressed_logs.en.txt
+```
+
+При `--create-schema` worker создает/обновляет `analytics.llm_prompts` для отладки и контроля версии prompt. В сам `aiGenerate` worker подставляет содержимое prompt-файла как constant system prompt, потому что ClickHouse 26.6 требует `const String` для `system_prompt`. Ручной `sql/20_map_ai.sql` получает тот же prompt через `tools/run_sql.sh`.
 
 ## Важное
 

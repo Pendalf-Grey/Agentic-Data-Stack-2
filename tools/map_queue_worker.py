@@ -15,6 +15,9 @@ from urllib.request import Request, urlopen
 
 
 EPOCH = "toDateTime64('1970-01-01 00:00:00.000', 3, 'UTC')"
+REPO_ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_MAP_PROMPT_NAME = "map_compressed_logs_en"
+DEFAULT_MAP_PROMPT_FILE = "prompts/map_compressed_logs.en.txt"
 
 
 def sql_string(value: str) -> str:
@@ -50,6 +53,53 @@ def load_dotenv(path: Path) -> None:
 
 def version_expr(offset: str = "batch_no") -> str:
     return f"toUInt64(toUnixTimestamp64Milli(now64(3))) * 1000000 + toUInt64({offset})"
+
+
+def create_prompts_table_sql() -> str:
+    return """
+CREATE TABLE IF NOT EXISTS analytics.llm_prompts
+(
+  prompt_name String,
+  prompt String,
+  updated_at DateTime64(3, 'UTC') DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY prompt_name
+"""
+
+
+def resolve_project_path(value: str) -> Path:
+    path = Path(value)
+    if path.is_absolute():
+        return path
+    cwd_path = Path.cwd() / path
+    if cwd_path.exists():
+        return cwd_path
+    return REPO_ROOT / path
+
+
+def read_prompt_file(path_value: str) -> str:
+    prompt_path = resolve_project_path(path_value)
+    if not prompt_path.exists():
+        raise SystemExit(f"Map prompt file not found: {prompt_path}")
+    return prompt_path.read_text(encoding="utf-8").strip()
+
+
+def upsert_prompt_sql(prompt_name: str, prompt: str) -> str:
+    return f"""
+INSERT INTO analytics.llm_prompts
+(
+  prompt_name,
+  prompt,
+  updated_at
+)
+VALUES
+(
+  {sql_string(prompt_name)},
+  {sql_string(prompt)},
+  now64(3)
+)
+"""
 
 
 def create_queue_table_sql() -> str:
@@ -135,7 +185,7 @@ SELECT
   {version_expr("b.batch_no")} AS version,
   now64(3) AS created_at,
   now64(3) AS updated_at
-FROM analytics.llm_investigations FINAL AS i
+FROM analytics.llm_investigations AS i FINAL
 INNER JOIN analytics.es_log_compressed_batches AS b
   ON b.source_name = i.source_name
  AND b.index_name LIKE i.index_like
@@ -227,6 +277,7 @@ FORMAT TabSeparatedRaw
 
 def map_sql(args: argparse.Namespace, lease_id: str) -> str:
     investigation_id = sql_string(require_investigation_id(args))
+    system_prompt = sql_string(read_prompt_file(args.map_prompt_file))
     return f"""
 INSERT INTO analytics.llm_map_results
 SELECT
@@ -237,25 +288,23 @@ SELECT
   b.event_time_to,
   b.rows_read,
   aiGenerate(
-    'llm_map',
     concat(
-      'Ты Map-LLM. Проанализируй сжатый batch Elasticsearch-логов строго под вопрос пользователя. ',
-      'Верни строгий JSON: summary, suspected_services, root_causes, candidate_filters, evidence, confidence. ',
-      'Не возвращай исходные логи. ',
-      'user_question=', i.user_question,
+      'Investigation context:',
+      '\\nuser_question=', i.user_question,
       '\\ninvestigation_time_from=', toString(i.time_from),
       '\\ninvestigation_time_to=', toString(i.time_to),
       '\\nbatch_time_from=', toString(b.event_time_from),
       '\\nbatch_time_to=', toString(b.event_time_to),
       '\\ncompressed_json=', b.compressed_json
     ),
+    {system_prompt},
     0.1
   ) AS map_summary_json,
   now64(3) AS created_at
-FROM analytics.llm_map_queue FINAL AS q
+FROM analytics.llm_map_queue AS q FINAL
 INNER JOIN analytics.es_log_compressed_batches AS b
   ON b.batch_id = q.batch_id
-INNER JOIN analytics.llm_investigations FINAL AS i
+INNER JOIN analytics.llm_investigations AS i FINAL
   ON i.investigation_id = q.investigation_id
 WHERE q.investigation_id = {investigation_id}
   AND q.status = 'in_progress'
@@ -298,8 +347,8 @@ SELECT
   {version_expr("q.batch_no")} AS version,
   q.created_at,
   now64(3) AS updated_at
-FROM analytics.llm_map_queue FINAL AS q
-INNER JOIN analytics.llm_map_results FINAL AS r
+FROM analytics.llm_map_queue AS q FINAL
+INNER JOIN analytics.llm_map_results AS r FINAL
   ON r.investigation_id = q.investigation_id
  AND r.batch_id = q.batch_id
 WHERE q.investigation_id = {investigation_id}
@@ -355,6 +404,14 @@ def run_query(args: argparse.Namespace, query: str) -> str:
     return http_query(args.clickhouse_url, args.user, args.password, args.database, query, args.http_timeout)
 
 
+def sync_map_prompt(args: argparse.Namespace) -> None:
+    prompt_path = resolve_project_path(args.map_prompt_file)
+    prompt = read_prompt_file(args.map_prompt_file)
+    run_query(args, create_prompts_table_sql())
+    run_query(args, upsert_prompt_sql(args.map_prompt_name, prompt))
+    print(json.dumps({"prompt_name": args.map_prompt_name, "prompt_file": str(prompt_path), "status": "synced"}, ensure_ascii=False), flush=True)
+
+
 def print_status(args: argparse.Namespace) -> None:
     out = run_query(args, status_sql(args)).strip()
     if not out:
@@ -384,7 +441,11 @@ def main() -> int:
     parser.add_argument("--request-timeout-sec", type=int, default=int(os.getenv("AI_FUNCTION_REQUEST_TIMEOUT_SEC", "180")))
     parser.add_argument("--ai-retries", type=int, default=int(os.getenv("AI_FUNCTION_MAX_RETRIES", "2")))
     parser.add_argument("--http-timeout", type=int, default=1200)
+    parser.add_argument("--map-prompt-name", default=os.getenv("MAP_PROMPT_NAME", DEFAULT_MAP_PROMPT_NAME))
+    parser.add_argument("--map-prompt-file", default=os.getenv("MAP_PROMPT_FILE", DEFAULT_MAP_PROMPT_FILE))
     parser.add_argument("--create-schema", action="store_true")
+    parser.add_argument("--sync-prompts", action="store_true")
+    parser.add_argument("--prompts-only", action="store_true")
     parser.add_argument("--enqueue", action="store_true")
     parser.add_argument("--enqueue-only", action="store_true")
     parser.add_argument("--status", action="store_true")
@@ -396,8 +457,13 @@ def main() -> int:
         raise SystemExit("--worker-index must be between 0 and worker-count - 1")
 
     if args.create_schema:
+        run_query(args, create_prompts_table_sql())
         run_query(args, create_queue_table_sql())
         run_query(args, create_queue_status_view_sql())
+    if args.create_schema or args.sync_prompts or args.prompts_only:
+        sync_map_prompt(args)
+    if args.prompts_only:
+        return 0
     if args.enqueue or args.enqueue_only:
         run_query(args, enqueue_sql(args))
     if args.status or args.enqueue_only:
